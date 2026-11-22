@@ -1,0 +1,21 @@
+# Core
+anthropic
+python-dotenv
+pyyaml
+
+# Ingestion
+pypdf
+
+# Index & retrieval
+chromadb
+sentence-transformers
+rank-bm25
+
+# API & UI
+fastapi
+uvicorn
+streamlit
+
+# Evaluation & tests
+ragas
+pytest
