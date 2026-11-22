@@ -48,6 +48,12 @@ def test_overlap_must_be_smaller_than_size():
         chunk_page(make_page("text"), chunk_size=100, overlap=100)
 
 
+def test_html_saved_as_pdf_is_skipped(tmp_path):
+    fake = tmp_path / "fake.pdf"
+    fake.write_text("<!DOCTYPE html><html>Access denied</html>")
+    assert load_pdf(fake) == []
+
+
 def test_load_pdf_reads_pages(tmp_path):
     reportlab = pytest.importorskip("reportlab.pdfgen.canvas")
     pdf = tmp_path / "sample.pdf"

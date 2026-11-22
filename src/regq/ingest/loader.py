@@ -28,9 +28,23 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
+def is_real_pdf(path: Path) -> bool:
+    """A download that failed often saves an HTML error page with a .pdf name."""
+    with open(path, "rb") as f:
+        return f.read(1024).lstrip().startswith(b"%PDF")
+
+
 def load_pdf(path: str | Path) -> list[Page]:
     path = Path(path)
-    reader = PdfReader(str(path))
+    if not is_real_pdf(path):
+        log.error("SKIPPED %s — not a real PDF (probably a web page saved by a failed "
+                  "download). Re-download it from the link in data/sources.md.", path.name)
+        return []
+    try:
+        reader = PdfReader(str(path))
+    except Exception as exc:
+        log.error("SKIPPED %s — could not open PDF: %s", path.name, exc)
+        return []
     pages: list[Page] = []
     for i, pdf_page in enumerate(reader.pages, start=1):
         try:
