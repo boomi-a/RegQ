@@ -22,6 +22,8 @@ from regq.settings import PROCESSED_DIR, PROJECT_ROOT, RAW_DIR, load_settings  #
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 log = logging.getLogger("ingest")
+for noisy in ("httpx", "huggingface_hub", "sentence_transformers"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def main() -> int:
@@ -34,9 +36,11 @@ def main() -> int:
     size, overlap = cfg["chunking"]["chunk_size"], cfg["chunking"]["chunk_overlap"]
 
     pdfs = sorted(RAW_DIR.glob("*.pdf"))
-    if not pdfs and not args.query:
-        log.error("No PDFs in %s — download the documents listed in data/sources.md", RAW_DIR)
-        return 1
+    if not pdfs:
+        log.warning("No PDFs found in %s — download the documents listed in data/sources.md",
+                    RAW_DIR.relative_to(PROJECT_ROOT))
+        if not args.query:
+            return 1
 
     t0 = time.time()
     all_chunks = []
@@ -46,12 +50,13 @@ def main() -> int:
         all_chunks.extend(chunks)
 
     # keep a plain copy of the chunks: used later for BM25 keyword search and debugging
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    out = PROCESSED_DIR / "chunks.jsonl"
-    with open(out, "w", encoding="utf-8") as f:
-        for c in all_chunks:
-            f.write(json.dumps(c.to_dict(), ensure_ascii=False) + "\n")
-    log.info("Wrote %d chunks to %s", len(all_chunks), out.relative_to(PROJECT_ROOT))
+    if all_chunks:
+        PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+        out = PROCESSED_DIR / "chunks.jsonl"
+        with open(out, "w", encoding="utf-8") as f:
+            for c in all_chunks:
+                f.write(json.dumps(c.to_dict(), ensure_ascii=False) + "\n")
+        log.info("Wrote %d chunks to %s", len(all_chunks), out.relative_to(PROJECT_ROOT))
 
     if args.dry_run:
         log.info("Dry run — skipping embeddings. Done in %.1fs", time.time() - t0)
@@ -73,7 +78,10 @@ def main() -> int:
         log.info("Vector store now holds %d chunks. Done in %.1fs", store.count(), time.time() - t0)
 
     if args.query:
-        hits = store.query(embedder.embed_query(args.query), top_k=cfg["retrieval"]["top_k"])
+        if store.count() == 0:
+            log.error("The vector store is empty — add PDFs to data/raw/ and run ingest first.")
+            return 1
+        hits =store.query(embedder.embed_query(args.query), top_k=cfg["retrieval"]["top_k"])
         print(f"\nTop results for: {args.query}\n")
         for h in hits[:5]:
             print(f"[{h['score']:.3f}] {h['source']} p.{h['page']}: {h['text'][:160]}...\n")
