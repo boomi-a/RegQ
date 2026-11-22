@@ -38,6 +38,45 @@ def test_very_long_word_is_hard_split():
     assert "".join(c.text for c in chunks).count("x") >= 1000
 
 
+def test_chunks_never_start_or_end_mid_word():
+    words = [f"word{i:04d}" for i in range(600)]
+    # mix of normal sentences and one very long sentence with no punctuation
+    text = ". ".join(" ".join(words[i:i + 12]) for i in range(0, 300, 12)) + ". " + " ".join(words[300:])
+    vocab = set(words)
+    for c in chunk_page(make_page(text), chunk_size=200, overlap=60):
+        first, last = c.text.split()[0], c.text.split()[-1].rstrip(".")
+        assert first in vocab, f"chunk starts mid-word: {c.text[:30]!r}"
+        assert last in vocab, f"chunk ends mid-word: {c.text[-30:]!r}"
+
+
+def test_repeated_headers_and_page_numbers_are_removed():
+    from regq.ingest.loader import remove_repeated_lines
+    topics = ["sanctions", "bribery", "fraud", "PEPs", "CDD", "EDD", "SARs",
+              "tipping off", "record keeping", "training"]
+    bodies = [f"Guidance on {t}.\nFirms must assess {t} risk.\nSee the {t} annex.\nMore on {t}."
+              for i, t in enumerate(topics, start=1)]
+    pages = [f"FCG Financial Crime Guide\nwww.handbook.fca.org.uk May 2026\n{b}\nPage {i} of 10"
+             for i, b in enumerate(bodies, start=1)]
+    cleaned, removed = remove_repeated_lines(pages)
+    assert len(removed) == 3
+    assert cleaned == bodies
+
+
+def test_repeated_body_text_in_middle_of_page_is_kept():
+    from regq.ingest.loader import remove_repeated_lines
+    middle = "\n".join(f"unique line {c}" for c in "abcdefgh")
+    pages = [f"top {w}\n{middle}\nTable 1: risk factors\n{middle}\nbottom {w}"
+             for w in ["one", "two", "three", "four", "five"]]
+    cleaned, _ = remove_repeated_lines(pages)
+    assert all("Table 1: risk factors" in t for t in cleaned)
+
+
+def test_short_documents_keep_all_lines():
+    from regq.ingest.loader import remove_repeated_lines
+    pages = ["Title\nA", "Title\nB"]
+    assert remove_repeated_lines(pages)[0] == pages
+
+
 def test_short_page_gives_one_chunk():
     chunks = chunk_page(make_page("Short page."), chunk_size=800, overlap=150)
     assert [c.text for c in chunks] == ["Short page."]

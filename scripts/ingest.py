@@ -10,7 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
+
+# keep Hugging Face / transformers quiet (must be set before they are imported)
+os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 import time
 from pathlib import Path
 
@@ -22,8 +28,17 @@ from regq.settings import PROCESSED_DIR, PROJECT_ROOT, RAW_DIR, load_settings  #
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 log = logging.getLogger("ingest")
-for noisy in ("httpx", "huggingface_hub", "sentence_transformers"):
-    logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+class _OnlyOurLogs(logging.Filter):
+    """Show INFO from this project; only ERROR+ from libraries (httpx, HF, torch...)."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        ours = record.name == "ingest" or record.name.startswith("regq")
+        return ours or record.levelno >= logging.ERROR
+
+
+for _h in logging.getLogger().handlers:
+    _h.addFilter(_OnlyOurLogs())
 
 
 def main() -> int:
